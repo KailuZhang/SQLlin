@@ -19,6 +19,7 @@ group = GROUP
 version = VERSION
 
 kotlin {
+    jvmToolchain(11)
     explicitApi()
     androidTarget {
         publishLibraryVariants("release")
@@ -120,7 +121,7 @@ android {
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 
