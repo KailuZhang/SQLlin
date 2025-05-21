@@ -41,16 +41,32 @@ public actual fun openDatabase(config: DatabaseConfiguration): DatabaseConnectio
         AndroidDBHelper(config)
     else
         OldAndroidDBHelper(config)
-    val database = if (config.isReadOnly)
-        helper.readableDatabase
-    else
-        helper.writableDatabase
+    val database = when {
+        config.isReadOnly -> helper.openStrictReadonlyDatabase(config) // Use the specific function
+        else -> helper.writableDatabase                            // Writable
+    }
     val connection = AndroidDatabaseConnection(database)
-    if (!isEqualsOrHigherThanAndroidP) {
+    if (!isEqualsOrHigherThanAndroidP && !database.isReadOnly) {
         connection.updateSynchronousMode(config.synchronousMode)
         connection.updateJournalMode(config.journalMode)
     }
     return connection
+}
+
+private fun SQLiteOpenHelper.openStrictReadonlyDatabase(
+    config: DatabaseConfiguration
+): SQLiteDatabase {
+    val context = (config.path as AndroidDatabasePath).context
+    val dbFile = context.getDatabasePath(config.name)
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            openDatabase(dbFile, config.toAndroidOpenParams())
+        } else {
+            openDatabase(dbFile.path, null, OPEN_READONLY)
+        }
+    } catch (e: Exception) {
+        readableDatabase
+    }
 }
 
 private class OldAndroidDBHelper(
@@ -76,12 +92,17 @@ private class AndroidDBHelper(
         config.upgrade(AndroidDatabaseConnection(db), oldVersion, newVersion)
 }
 
-@RequiresApi(Build.VERSION_CODES.P)
+@RequiresApi(Build.VERSION_CODES.O_MR1)
 @Suppress("DEPRECATION")
 private fun DatabaseConfiguration.toAndroidOpenParams(): OpenParams = OpenParams
     .Builder()
-    .setJournalMode(journalMode.name)
-    .setSynchronousMode(synchronousMode.name)
+    .setOpenFlags(if (isReadOnly) OPEN_READONLY else OPEN_READWRITE)
+    .apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            setJournalMode(journalMode.name)
+            setSynchronousMode(synchronousMode.name)
+        }
+    }
     .setIdleConnectionTimeout(busyTimeout.toLong())
     .setLookasideConfig(lookasideSlotSize, lookasideSlotCount)
     .build()
